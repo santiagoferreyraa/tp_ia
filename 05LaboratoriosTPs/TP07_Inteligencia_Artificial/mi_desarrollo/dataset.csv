@@ -1,6 +1,85 @@
 texto,intencion
 dale para adelante,MOVER
+avanzá 2 metros,MOVER
+caminá despacio hacia adelante,MOVER
+retrocedé un poco,MOVER
+andá para atrás 1 metro,MOVER
+avanzá 100 metros,MOVER
+muévete a 2 m/s,MOVER
+caminá hacia la puerta,MOVER
+andá directo al fondo,MOVER
+marchá hacia adelante 3 metros,MOVER
+desplazate 5 metros,MOVER
+movete despacito,MOVER
+correte 1 metro a la derecha,MOVER
+avanzá un poco más,MOVER
 date media vuelta,GIRAR
+girá 90 grados a la derecha,GIRAR
+girá a la izquierda,GIRAR
+media vuelta,GIRAR
+girá 270 grados,GIRAR
+"girá 45° a la derecha y después avanzá",GIRAR
+rotá sobre tu propio eje,GIRAR
+da una vuelta completa,GIRAR
+girá para la derecha,GIRAR
+doblando a la izquierda,GIRAR
+rotá a 90 grados,GIRAR
+pegá una vuelta,GIRAR
+girate hacia la ventana,GIRAR
+girá hacia el frente,GIRAR
 frená ahí,DETENERSE
+detente ya,DETENERSE
+no avances,DETENERSE
+pará todo,DETENERSE
+detente un segundo,DETENERSE
+congelate,DETENERSE
+frená inmediatamente,DETENERSE
+pará la marcha,DETENERSE
+alto ahí,DETENERSE
+no te muevas más,DETENERSE
+quedate quieto,DETENERSE
+stop ahora mismo,DETENERSE
+frená el movimiento,DETENERSE
+detené el avance,DETENERSE
 hacele hola a la clase,SALUDO
+saluda a los estudiantes,SALUDO
+hacé un saludo,SALUDO
+hola amigo,SALUDO
+saluda con la mano,SALUDO
+decí hola a todos,SALUDO
+levantá la mano para saludar,SALUDO
+dame un saludo cordial,SALUDO
+saludá a la gente,SALUDO
+hacele un gesto de bienvenida,SALUDO
+hola bot,SALUDO
+un saludo por favor,SALUDO
+saludá a los profesores,SALUDO
+hacele un saludo a la cámara,SALUDO
+¿cuánta batería tenés?,CONSULTAR_ESTADO
+¿cómo estás de batería?,CONSULTAR_ESTADO
+dame el estado del robot,CONSULTAR_ESTADO
+cómo viene la carga,CONSULTAR_ESTADO
+mostrame el nivel de batería,CONSULTAR_ESTADO
+informame el status del sistema,CONSULTAR_ESTADO
+cuál es tu estado actual,CONSULTAR_ESTADO
+me decís el porcentaje de batería,CONSULTAR_ESTADO
+reporte de batería,CONSULTAR_ESTADO
+chequeá la batería,CONSULTAR_ESTADO
+cómo venimos de energía,CONSULTAR_ESTADO
+estado general del robot,CONSULTAR_ESTADO
+cuánta energía te queda,CONSULTAR_ESTADO
+decime la batería disponible,CONSULTAR_ESTADO
 qué hora es,DESCONOCIDO
+salta desde la mesa,DESCONOCIDO
+"hola, ¿cómo te llamás?",DESCONOCIDO
+empujá la caja,DESCONOCIDO
+corré lo más rápido que puedas,DESCONOCIDO
+qué onda,DESCONOCIDO
+cuál es la capital de francia,DESCONOCIDO
+cociná unas milanesas,DESCONOCIDO
+contame un chiste,DESCONOCIDO
+cantá una canción,DESCONOCIDO
+tirate un paso,DESCONOCIDO
+rompé esa pared,DESCONOCIDO
+traeme un café,DESCONOCIDO
+agarrá la mesa y levantala,DESCONOCIDO

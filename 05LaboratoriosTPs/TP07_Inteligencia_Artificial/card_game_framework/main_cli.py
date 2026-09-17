@@ -3,6 +3,10 @@
     python main_cli.py             abre la mesa (pygame)
     python main_cli.py --consola   juega en la terminal
     python main_cli.py --sim       10 partidas IA vs. jugador al azar
+    python main_cli.py --operador  partida con cartas reales (pantalla del operador)
+
+  Con el G1 fisico (SIN PROBAR, solo Linux con el SDK de Unitree):
+    python main_cli.py --operador --robot-real eth0 [--voz-g1]
 """
 
 import sys
@@ -121,7 +125,13 @@ def launch_gui():
         print("Mientras tanto podés jugar en consola:  python main_cli.py --consola")
         sys.exit(1)
     from card_framework.interfaces.mesa.app import main as abrir_mesa
-    abrir_mesa()
+    destino, interfaz = "simulador", None
+    if "--robot-real" in sys.argv:
+        i = sys.argv.index("--robot-real")
+        destino = "real"
+        interfaz = sys.argv[i + 1] if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("--") else None
+    abrir_mesa(destino=destino, interfaz=interfaz, voz_en_robot="--voz-g1" in sys.argv,
+               modo_inicial="real" if "--operador" in sys.argv else "nueva")
 
 
 if __name__ == "__main__":

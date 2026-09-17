@@ -51,22 +51,28 @@ JERARQUIA = [
 
 
 class EscenaMenu:
-    def __init__(self, app):
+    def __init__(self, app, modo: str = "nueva"):
         self.app = app
         self.rec = app.recursos
-        self.modo = "nueva"
+        self.modo = modo
+        self.robot_es_mano = False
         self.pestana = "Cómo se juega"
         self.objetivo = app.ultimo_objetivo
 
-        x, w, h = 90, 300, 62
-        self.btn_nueva = Boton((x, 300, w, h), "NUEVA PARTIDA", lambda: self._modo("nueva"), "medio", 22, 4)
-        self.btn_reglas = Boton((x, 390, w, h), "REGLAS", lambda: self._modo("reglas"), "claro", 22, 4)
-        self.btn_salir = Boton((x, 480, w, h), "SALIR", app.salir, "oscuro", 22, 4)
+        x, w, h = 90, 300, 58
+        self.btn_nueva = Boton((x, 270, w, h), "NUEVA PARTIDA", lambda: self._modo("nueva"), "medio", 22, 4)
+        self.btn_real = Boton((x, 346, w, h), "CARTAS REALES", lambda: self._modo("real"), "medio", 22, 4)
+        self.btn_reglas = Boton((x, 422, w, h), "REGLAS", lambda: self._modo("reglas"), "claro", 22, 4)
+        self.btn_salir = Boton((x, 498, w, h), "SALIR", app.salir, "oscuro", 22, 4)
 
         self.btn_15 = Boton((PANEL.x + 120, PANEL.y + 170, 250, 150), "15", lambda: self._objetivo(15), "claro", 64, 14)
         self.btn_30 = Boton((PANEL.right - 370, PANEL.y + 170, 250, 150), "30", lambda: self._objetivo(30), "claro", 64, 14)
         self.btn_empezar = Boton((PANEL.centerx - 130, PANEL.bottom - 110, 260, 60), "EMPEZAR",
-                                 lambda: app.nueva_partida(self.objetivo), "dorado", 24, 8)
+                                 self._empezar, "dorado", 24, 8)
+        self.btn_mano_rival = Boton((PANEL.centerx - 210, PANEL.y + 322, 200, 44), "Mano: el rival",
+                                    lambda: self._mano(False), "claro", 18, 8)
+        self.btn_mano_robot = Boton((PANEL.centerx + 10, PANEL.y + 322, 200, 44), "Mano: el G1",
+                                    lambda: self._mano(True), "claro", 18, 8)
 
         self.tabs = []
         tx = PANEL.x + 40
@@ -81,6 +87,16 @@ class EscenaMenu:
         self.modo = modo
         self._refrescar()
 
+    def _empezar(self):
+        if self.modo == "real":
+            self.app.partida_real(self.objetivo, self.robot_es_mano)
+        else:
+            self.app.nueva_partida(self.objetivo)
+
+    def _mano(self, robot):
+        self.robot_es_mano = robot
+        self._refrescar()
+
     def _objetivo(self, objetivo):
         self.objetivo = objetivo
         self._refrescar()
@@ -91,9 +107,17 @@ class EscenaMenu:
 
     def _refrescar(self):
         self.btn_nueva.activo = self.modo == "nueva"
+        self.btn_real.activo = self.modo == "real"
         self.btn_reglas.activo = self.modo == "reglas"
         for b in (self.btn_15, self.btn_30, self.btn_empezar):
-            b.visible = self.modo == "nueva"
+            b.visible = self.modo in ("nueva", "real")
+        for b in (self.btn_mano_rival, self.btn_mano_robot):
+            b.visible = self.modo == "real"
+        self.btn_mano_rival.activo = not self.robot_es_mano
+        self.btn_mano_robot.activo = self.robot_es_mano
+        alto = 100 if self.modo == "real" else 150
+        for b in (self.btn_15, self.btn_30):
+            b.rect.h = alto
         self.btn_15.activo = self.objetivo == 15
         self.btn_30.activo = self.objetivo == 30
         for t in self.tabs:
@@ -101,16 +125,16 @@ class EscenaMenu:
             t.activo = t.etiqueta == self.pestana
 
     def _botones(self):
-        return [self.btn_nueva, self.btn_reglas, self.btn_salir,
-                self.btn_15, self.btn_30, self.btn_empezar, *self.tabs]
+        return [self.btn_nueva, self.btn_real, self.btn_reglas, self.btn_salir,
+                self.btn_15, self.btn_30, self.btn_empezar, self.btn_mano_rival, self.btn_mano_robot, *self.tabs]
 
     # ---------- ciclo ----------
     def evento(self, e):
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
                 self.app.salir()
-            elif e.key == pygame.K_RETURN and self.modo == "nueva":
-                self.app.nueva_partida(self.objetivo)
+            elif e.key == pygame.K_RETURN and self.modo in ("nueva", "real"):
+                self._empezar()
         for b in self._botones():
             if b.evento(e):
                 break
@@ -134,6 +158,8 @@ class EscenaMenu:
         panel(pantalla, PANEL, borde=COLOR["panel_borde"], radio=34)
         if self.modo == "nueva":
             self._dibujar_nueva(pantalla)
+        elif self.modo == "real":
+            self._dibujar_real(pantalla)
         else:
             self._dibujar_reglas(pantalla)
 
@@ -154,6 +180,17 @@ class EscenaMenu:
               (self.btn_30.rect.centerx, self.btn_30.rect.bottom + 22))
         texto(pantalla, "Sin flor · envido y truco completos", rec.fuente(15), COLOR["texto_suave"],
               (PANEL.centerx, PANEL.bottom - 28))
+
+    def _dibujar_real(self, pantalla):
+        rec = self.rec
+        texto(pantalla, "Contra el G1, con cartas de verdad", rec.fuente(30, negrita=True, serif=True), COLOR["texto"],
+              (PANEL.centerx, PANEL.y + 46))
+        parrafo(pantalla, "Un operador le carga al G1 sus cartas y lo que hace el rival. El G1 decide y "
+                          "dice su jugada; una persona tira la carta por él.",
+                rec.fuente(17), COLOR["texto_suave"], PANEL.x + 70, PANEL.y + 82, PANEL.w - 140, 1.3)
+        texto(pantalla, "¿A cuántos puntos?", rec.fuente(18), COLOR["texto_suave"], (PANEL.centerx, PANEL.y + 150))
+        texto(pantalla, "¿Quién es mano en la primera?", rec.fuente(18), COLOR["texto_suave"],
+              (PANEL.centerx, PANEL.y + 300))
 
     def _dibujar_reglas(self, pantalla):
         rec = self.rec

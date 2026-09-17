@@ -49,6 +49,6 @@ if errorlevel 1 (
   "%PYTHON%" %PYARGS% -m pip install --user pygame
 )
 
-"%PYTHON%" %PYARGS% "%ARCHIVO%"
+"%PYTHON%" %PYARGS% "%ARCHIVO%" %*
 echo.
 pause

@@ -6,22 +6,32 @@ from card_framework.core.card import Card
 from card_framework.core.game_state import GameState
 from card_framework.core.player import Player
 from card_framework.games.base_game import AbstractGame
-from card_framework.games.truco.truco_deck import create_spanish_40_deck, calculate_envido_points
+from card_framework.games.truco.truco_deck import create_spanish_40_deck, calculate_envido_points, get_truco_rank
 
 
 TRUCO_VALOR = {"TRUCO": 2, "RETRUCO": 3, "VALE_CUATRO": 4}
+# Puntos de envido posibles: una carta sola (0 a 7) o dos del mismo palo (20 a 33).
+ENVIDOS_POSIBLES = list(range(0, 8)) + list(range(20, 34))
 ENVIDO_VALOR = {"ENVIDO": 2, "REAL_ENVIDO": 3}
 
 
 class TrucoGame(AbstractGame):
     """Implementación del juego Truco Argentino (1v1) a 15 o 30 puntos."""
 
-    def __init__(self, p1_name: str = "Jugador 1", p2_name: str = "Jugador 2", target_score: int = 15):
+    def __init__(self, p1_name: str = "Jugador 1", p2_name: str = "Jugador 2", target_score: int = 15,
+                 ocultos: Tuple[str, ...] = ()):
+        """
+        ocultos: jugadores cuyas cartas el sistema NO ve (partida con cartas
+        reales). Para ellos el motor no reparte: acepta cualquier carta que no
+        se haya visto, y en el envido querido les pide que DECLAREN sus puntos,
+        como en una mesa de verdad.
+        """
         self.p1_id = "player_1"
         self.p2_id = "player_2"
         self.p1_name = p1_name
         self.p2_name = p2_name
         self.target_score = target_score
+        self.ocultos = set(ocultos)
 
     def reset(self) -> GameState:
         """Inicializa una nueva partida o nueva mano."""
@@ -53,6 +63,8 @@ class TrucoGame(AbstractGame):
             "hand_finished": False,
             "hand_just_finished": False,
             "last_hand_winner_id": None,
+            "cartas_ocultas": {},
+            "envido_declarado": {},
         }
         self._deal_new_hand(state)
         return state
@@ -62,11 +74,14 @@ class TrucoGame(AbstractGame):
         deck = create_spanish_40_deck()
         deck.shuffle()
 
-        for p in state.players.values():
+        for pid, p in state.players.items():
             p.clear_hand()
-            p.receive_cards(deck.deal(3))
+            if pid not in self.ocultos:
+                p.receive_cards(deck.deal(3))
 
         data = state.game_data
+        data["cartas_ocultas"] = {pid: 3 for pid in self.ocultos}
+        data["envido_declarado"] = {}
         data["envido_state"] = "UNOPENED"
         data["envido_bid_chain"] = []
         data["envido_bidder_id"] = None
@@ -99,6 +114,11 @@ class TrucoGame(AbstractGame):
         data = state.game_data
         opponent_id = self._opponent_id(player_id)
         player = state.players[player_id]
+
+        # 0. Envido querido con un jugador oculto: tiene que decir cuantos tiene.
+        if data["envido_state"] == "WAITING_DECLARATION":
+            return [Action(ActionType.DECLARE, player_id, f"Tengo {p}", {"envido": p})
+                    for p in ENVIDOS_POSIBLES]
 
         # 1. Si se está esperando respuesta a un cante de Envido
         if data["envido_state"] == "WAITING_RESPONSE" and data["envido_bidder_id"] == opponent_id:
@@ -145,13 +165,52 @@ class TrucoGame(AbstractGame):
                 actions.append(Action(ActionType.BID, player_id, "Vale Cuatro", {"bid": "VALE_CUATRO"}))
 
         # 5. Jugar Carta
-        for card in player.hand:
+        for card in self._cartas_jugables(state, player_id):
             actions.append(Action(ActionType.PLAY_CARD, player_id, f"Jugar {card.name}", {"card": card}))
 
         # 6. Irse al mazo
         actions.append(Action(ActionType.FOLD, player_id, "Me voy al mazo", {}))
 
         return actions
+
+    def _cartas_jugables(self, state: GameState, player_id: str) -> List[Card]:
+        if player_id not in self.ocultos:
+            return list(state.players[player_id].hand)
+        # Mano oculta: puede ser cualquier carta que todavia no se vio.
+        if state.game_data["cartas_ocultas"].get(player_id, 0) <= 0:
+            return []
+        vistas = set(self.cartas_vistas(state))
+        return [c for c in create_spanish_40_deck().cards if c not in vistas]
+
+    def cartas_vistas(self, state: GameState) -> List[Card]:
+        """Las cartas de esta mano que el sistema conoce: manos visibles y cartas en la mesa."""
+        data = state.game_data
+        vistas: List[Card] = []
+        for pid, p in state.players.items():
+            if pid not in self.ocultos:
+                vistas.extend(p.hand)
+            vistas.extend(data["played_cards"][pid])
+        return vistas
+
+    def asignar_mano(self, state: GameState, player_id: str, cartas: List[Card]) -> None:
+        """Carga las cartas reales que le tocaron a un jugador visible (ej. el robot).
+
+        Se llama al empezar cada mano, antes de que ese jugador tire.
+        """
+        if player_id in self.ocultos:
+            raise ValueError("Ese jugador juega con la mano oculta.")
+        if len(cartas) != 3 or len(set(cartas)) != 3:
+            raise ValueError("Hay que cargar 3 cartas distintas.")
+        if state.game_data["played_cards"][player_id]:
+            raise ValueError("Ese jugador ya tiro en esta mano: no se le puede cambiar la mano.")
+        rival = self._opponent_id(player_id)
+        en_mesa = set(state.game_data["played_cards"][rival])
+        repetidas = [c for c in cartas if c in en_mesa]
+        if repetidas:
+            raise ValueError(f"{repetidas[0]} ya esta en la mesa.")
+        p = state.players[player_id]
+        p.clear_hand()
+        p.receive_cards([Card(c.suit, c.value, get_truco_rank(c.suit, c.value)) for c in cartas])
 
     def _puede_cantar_envido(self, data: dict, player_id: str) -> bool:
         """El envido se canta una sola vez, en primera, antes de tirar la propia carta."""
@@ -220,24 +279,16 @@ class TrucoGame(AbstractGame):
                 return state, 0.0, state.is_terminal
 
             elif resp == "QUIERO_ENVIDO":
-                p1_pts = calculate_envido_points(state.players[self.p1_id].hand + data["played_cards"][self.p1_id])
-                p2_pts = calculate_envido_points(state.players[self.p2_id].hand + data["played_cards"][self.p2_id])
-                winner_id = self.p1_id if p1_pts > p2_pts else (self.p2_id if p2_pts > p1_pts else data["mano_player_id"])
-                points_won = self._calculate_accepted_envido_points(data["envido_bid_chain"], state, winner_id)
-                state.players[winner_id].score += points_won
-                data["envido_state"] = "RESOLVED"
-                data["envido_points_awarded"] = True
-                data["envido_just_resolved"] = True
-                data["envido_resolved_info"] = {
-                    "accepted": True,
-                    "p1_pts": p1_pts,
-                    "p2_pts": p2_pts,
-                    "winner_id": winner_id,
-                    "points_won": points_won
-                }
-                state.current_player_id = data["envido_turn_owner"]
-                self._check_game_over(state)
-                return state, 0.0, state.is_terminal
+                if self.ocultos:
+                    data["envido_state"] = "WAITING_DECLARATION"
+                    state.current_player_id = sorted(self.ocultos)[0]
+                    return state, 0.0, state.is_terminal
+                return self._resolver_envido_querido(state)
+
+        # C2) DECLARAR LOS PUNTOS DE ENVIDO (mano oculta)
+        if action.action_type == ActionType.DECLARE and data["envido_state"] == "WAITING_DECLARATION":
+            data["envido_declarado"][player_id] = int(action.payload["envido"])
+            return self._resolver_envido_querido(state)
 
         # D) CANTAR TRUCO / RETRUCO / VALE CUATRO
         if action.action_type == ActionType.BID and action.payload.get("bid") in ["TRUCO", "RETRUCO", "VALE_CUATRO"]:
@@ -271,7 +322,12 @@ class TrucoGame(AbstractGame):
         # F) JUGAR CARTA
         if action.action_type == ActionType.PLAY_CARD:
             card = action.payload["card"]
-            state.players[player_id].play_card(card)
+            if player_id in self.ocultos:
+                if card in self.cartas_vistas(state):
+                    raise ValueError(f"{card} ya se vio en esta mano.")
+                data["cartas_ocultas"][player_id] -= 1
+            else:
+                state.players[player_id].play_card(card)
             data["current_trick_cards"][player_id] = card
             data["played_cards"][player_id].append(card)
 
@@ -294,6 +350,34 @@ class TrucoGame(AbstractGame):
 
             return state, 0.0, state.is_terminal
 
+        return state, 0.0, state.is_terminal
+
+    def _puntos_envido(self, state: GameState, player_id: str) -> int:
+        data = state.game_data
+        if player_id in self.ocultos:
+            return data["envido_declarado"][player_id]
+        return calculate_envido_points(state.players[player_id].hand + data["played_cards"][player_id])
+
+    def _resolver_envido_querido(self, state: GameState) -> Tuple[GameState, float, bool]:
+        data = state.game_data
+        p1_pts = self._puntos_envido(state, self.p1_id)
+        p2_pts = self._puntos_envido(state, self.p2_id)
+        winner_id = self.p1_id if p1_pts > p2_pts else (self.p2_id if p2_pts > p1_pts else data["mano_player_id"])
+        points_won = self._calculate_accepted_envido_points(data["envido_bid_chain"], state, winner_id)
+        state.players[winner_id].score += points_won
+        data["envido_state"] = "RESOLVED"
+        data["envido_points_awarded"] = True
+        data["envido_just_resolved"] = True
+        data["envido_resolved_info"] = {
+            "accepted": True,
+            "p1_pts": p1_pts,
+            "p2_pts": p2_pts,
+            "winner_id": winner_id,
+            "points_won": points_won,
+            "declarado": dict(data["envido_declarado"]),
+        }
+        state.current_player_id = data["envido_turn_owner"]
+        self._check_game_over(state)
         return state, 0.0, state.is_terminal
 
     def _evaluate_hand_winner(self, winners: List[str], mano_id: str) -> Optional[str]:

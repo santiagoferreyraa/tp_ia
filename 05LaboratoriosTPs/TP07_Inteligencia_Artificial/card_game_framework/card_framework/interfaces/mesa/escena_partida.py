@@ -18,22 +18,14 @@ from card_framework.core.action import Action, ActionType
 from card_framework.core.card import Card
 from card_framework.games.truco.truco_deck import calculate_envido_points
 from card_framework.games.truco.truco_game import TrucoGame
-from card_framework.games.truco.truco_verses import get_random_verse
+from card_framework.interfaces import frases_robot
+from card_framework.interfaces.frases_robot import NOMBRE_CANTO
 from card_framework.interfaces.mesa import anotador
 from card_framework.interfaces.mesa.recursos import ALTO, ANCHO, CARTA_H, CARTA_W, COLOR, esquinas, rotar_punto
 from card_framework.interfaces.mesa.widgets import Boton, Globo, mezclar, panel, salir, suavizar, texto
 
 # Probabilidad de que el robot "mienta": que cante o acepte sin tener con que.
 FAROL = 0.5
-
-# Probabilidad de que el robot cante con un verso en vez de decirlo derecho.
-PROB_VERSO = 0.25
-
-# Como canta el robot cuando no recita.
-CANTO_ROBOT = {
-    "ENVIDO": "Envido.", "REAL_ENVIDO": "¡Real envido!", "FALTA_ENVIDO": "¡Falta envido!",
-    "TRUCO": "¡Truco!", "RETRUCO": "¡Quiero retruco!", "VALE_CUATRO": "¡Quiero vale cuatro!",
-}
 
 NOMBRE_ROBOT = "G1"
 
@@ -53,11 +45,6 @@ MANO = {
 ANGULOS_ABANICO = {1: (0,), 2: (7, -7), 3: (13, 0, -13)}
 
 PANEL_RESPUESTA = pygame.Rect(1072, 0, 188, 150)  # la y se acomoda bajo el anotador
-
-NOMBRE_CANTO = {
-    "ENVIDO": "Envido", "REAL_ENVIDO": "Real envido", "FALTA_ENVIDO": "Falta envido",
-    "TRUCO": "Truco", "RETRUCO": "Retruco", "VALE_CUATRO": "Vale cuatro",
-}
 
 
 class CartaVolando:
@@ -286,10 +273,7 @@ class EscenaPartida:
         if bid:
             if es_robot:
                 # Casi siempre canta derecho; de vez en cuando se luce con un verso.
-                if random.random() < PROB_VERSO:
-                    self._decir(pid, get_random_verse(bid))
-                else:
-                    self._decir(pid, CANTO_ROBOT[bid])
+                self._decir(pid, frases_robot.frase(accion))
                 self.app.robot_sim.gesto("canto")
             else:
                 self._decir(pid, f"¡{NOMBRE_CANTO[bid]}!")

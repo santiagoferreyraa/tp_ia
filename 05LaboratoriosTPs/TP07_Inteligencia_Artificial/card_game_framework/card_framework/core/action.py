@@ -11,6 +11,7 @@ class ActionType(Enum):
     RESPONSE = auto()     # Respuesta (Quiero, No Quiero, Fold, Call)
     PASS = auto()         # Pasar turno
     FOLD = auto()         # Irse al mazo
+    DECLARE = auto()      # Declarar un valor que el sistema no puede ver (ej. puntos de envido)
 
 
 class Action:

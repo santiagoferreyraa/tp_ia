@@ -22,3 +22,6 @@ ENV/
 # Sistema operativo
 .DS_Store
 Thumbs.db
+
+# Registros de las partidas de Truco con cartas reales (uno por partida)
+05LaboratoriosTPs/TP07_Inteligencia_Artificial/registros/

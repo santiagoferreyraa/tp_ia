@@ -22,6 +22,6 @@ if ! "$PYTHON" -c "import pygame" >/dev/null 2>&1; then
   "$PYTHON" -m pip install --user pygame
 fi
 
-"$PYTHON" card_game_framework/main_cli.py
+"$PYTHON" card_game_framework/main_cli.py "$@"
 echo
 read -r -p "Enter para cerrar..."

@@ -4,7 +4,9 @@ import random
 from pathlib import Path
 from typing import Dict, List
 
-FRASES_PATH = Path("C:/Users/santi/Documents/GitHub/UadeRobotLab/truco/frases/frases.md")
+from card_framework import rutas
+
+FRASES_PATH = rutas.FRASES or Path()
 
 DEFAULT_VERSES: Dict[str, List[str]] = {
     "ENVIDO": [
@@ -28,10 +30,22 @@ DEFAULT_VERSES: Dict[str, List[str]] = {
         "Con las cartas que yo tengo tampoco me asusta el cuco, y si es que no me detengo le digo Quiero y retruco.",
         "Quiero y Retruco te canto en la cara."
     ],
+    # frases.md no trae verso de vale cuatro: se canta derecho.
     "VALE_CUATRO": [
-        "Cuando era charabón a mí me asustaba el cuco, ahora te asusto yo con Vale Cuatro y truco."
+        "¡Quiero vale cuatro!"
     ]
 }
+
+
+def _guardar(verses: Dict[str, List[str]], section, buffer: List[str]) -> None:
+    """Guarda un verso conservando sus renglones."""
+    if not section or not buffer:
+        return
+    verso = "\n".join(buffer)
+    # "...le digo Quiero y retruco" esta bajo Truco, pero es un verso de retruco.
+    if section == "TRUCO" and "retruco" in verso.lower():
+        section = "RETRUCO"
+    verses[section].append(verso)
 
 
 def load_verses_from_markdown() -> Dict[str, List[str]]:
@@ -56,11 +70,8 @@ def load_verses_from_markdown() -> Dict[str, List[str]]:
         for line in content.splitlines():
             line_str = line.strip()
             if not line_str:
-                if current_section and buffer:
-                    verse_str = " ".join(buffer)
-                    if current_section in verses:
-                        verses[current_section].append(verse_str)
-                    buffer = []
+                _guardar(verses, current_section, buffer)
+                buffer = []
                 continue
 
             lower_line = line_str.lower()
@@ -73,12 +84,12 @@ def load_verses_from_markdown() -> Dict[str, List[str]]:
             elif lower_line == "truco":
                 current_section = "TRUCO"
             elif lower_line in ("envido y truco", "falta envido y truco"):
-                current_section = "FALTA_ENVIDO"
+                # Son cantos dobles que el juego no tiene: esos versos no se usan.
+                current_section = None
             elif not line_str.startswith("#"):
                 buffer.append(line_str)
 
-        if current_section and buffer and current_section in verses:
-            verses[current_section].append(" ".join(buffer))
+        _guardar(verses, current_section, buffer)
 
         # Completar con defaults si alguna categoría quedó vacía
         for k, v in DEFAULT_VERSES.items():

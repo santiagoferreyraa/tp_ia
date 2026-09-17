@@ -1,4 +1,9 @@
-"""Interfaz Principal (CLI o Gráfica MESA VIRTUAL) para jugar al Truco contra la IA."""
+"""Punto de entrada del Truco contra el robot.
+
+    python main_cli.py             abre la mesa (pygame)
+    python main_cli.py --consola   juega en la terminal
+    python main_cli.py --sim       10 partidas IA vs. jugador al azar
+"""
 
 import sys
 from card_framework.agents.heuristic_truco_agent import HeuristicTrucoAgent
@@ -108,17 +113,21 @@ def play_simulation_ai_vs_ai(num_games: int = 5):
 
 
 def launch_gui():
-    import tkinter as tk
-    from card_framework.interfaces.table_gui import TrucoTableGUI
-    root = tk.Tk()
-    app = TrucoTableGUI(root)
-    root.mainloop()
+    try:
+        import pygame  # noqa: F401
+    except ImportError:
+        print("Falta pygame para abrir la mesa. Instalalo con:")
+        print("    python -m pip install --user pygame")
+        print("Mientras tanto podés jugar en consola:  python main_cli.py --consola")
+        sys.exit(1)
+    from card_framework.interfaces.mesa.app import main as abrir_mesa
+    abrir_mesa()
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--sim":
+    if "--sim" in sys.argv:
         play_simulation_ai_vs_ai(num_games=10)
-    elif len(sys.argv) > 1 and sys.argv[1] in ("--gui", "-g"):
-        launch_gui()
+    elif "--consola" in sys.argv:
+        play_game_interactive()
     else:
         launch_gui()

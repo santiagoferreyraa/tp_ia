@@ -9,6 +9,10 @@ from card_framework.games.base_game import AbstractGame
 from card_framework.games.truco.truco_deck import create_spanish_40_deck, calculate_envido_points
 
 
+TRUCO_VALOR = {"TRUCO": 2, "RETRUCO": 3, "VALE_CUATRO": 4}
+ENVIDO_VALOR = {"ENVIDO": 2, "REAL_ENVIDO": 3}
+
+
 class TrucoGame(AbstractGame):
     """Implementación del juego Truco Argentino (1v1) a 15 o 30 puntos."""
 
@@ -39,6 +43,9 @@ class TrucoGame(AbstractGame):
             "truco_bidder_id": None,
             "truco_last_offered_by": None,
             "truco_value": 1,
+            "truco_bid_name": None,
+            "envido_turn_owner": None,
+            "truco_turn_owner": None,
             "trick_winners": [],
             "current_trick_cards": {},
             "played_cards": {self.p1_id: [], self.p2_id: []},
@@ -70,6 +77,9 @@ class TrucoGame(AbstractGame):
         data["truco_bidder_id"] = None
         data["truco_last_offered_by"] = None
         data["truco_value"] = 1
+        data["truco_bid_name"] = None
+        data["envido_turn_owner"] = None
+        data["truco_turn_owner"] = None
         data["trick_winners"] = []
         data["current_trick_cards"] = {}
         data["played_cards"] = {self.p1_id: [], self.p2_id: []}
@@ -94,12 +104,14 @@ class TrucoGame(AbstractGame):
         if data["envido_state"] == "WAITING_RESPONSE" and data["envido_bidder_id"] == opponent_id:
             actions.append(Action(ActionType.RESPONSE, player_id, "Quiero", {"response": "QUIERO_ENVIDO"}))
             actions.append(Action(ActionType.RESPONSE, player_id, "No Quiero", {"response": "NO_QUIERO_ENVIDO"}))
-            last_bid = data["envido_bid_chain"][-1]
-            if last_bid == "ENVIDO":
+            chain = data["envido_bid_chain"]
+            last_bid = chain[-1]
+            # Subidas permitidas: Envido -> Envido (una sola vez) -> Real -> Falta.
+            if chain == ["ENVIDO"]:
                 actions.append(Action(ActionType.BID, player_id, "Envido", {"bid": "ENVIDO"}))
+            if last_bid == "ENVIDO":
                 actions.append(Action(ActionType.BID, player_id, "Real Envido", {"bid": "REAL_ENVIDO"}))
-                actions.append(Action(ActionType.BID, player_id, "Falta Envido", {"bid": "FALTA_ENVIDO"}))
-            elif last_bid == "REAL_ENVIDO":
+            if last_bid in ("ENVIDO", "REAL_ENVIDO"):
                 actions.append(Action(ActionType.BID, player_id, "Falta Envido", {"bid": "FALTA_ENVIDO"}))
             return actions
 
@@ -112,13 +124,16 @@ class TrucoGame(AbstractGame):
                 actions.append(Action(ActionType.BID, player_id, "Retruco", {"bid": "RETRUCO"}))
             elif last_offered == "RETRUCO":
                 actions.append(Action(ActionType.BID, player_id, "Vale Cuatro", {"bid": "VALE_CUATRO"}))
+            # "El envido esta primero": al truco cantado en primera se le puede
+            # contestar con envido, antes del quiero / no quiero.
+            if last_offered == "TRUCO" and self._puede_cantar_envido(data, player_id):
+                actions.extend(self._acciones_envido(player_id))
             return actions
 
         # 3. Acciones de cante de Envido (sólo en ronda 1 y antes de tirar la 2da carta)
-        if data["envido_state"] == "UNOPENED" and data["trick_num"] == 1 and len(data["played_cards"][player_id]) == 0:
-            actions.append(Action(ActionType.BID, player_id, "Envido", {"bid": "ENVIDO"}))
-            actions.append(Action(ActionType.BID, player_id, "Real Envido", {"bid": "REAL_ENVIDO"}))
-            actions.append(Action(ActionType.BID, player_id, "Falta Envido", {"bid": "FALTA_ENVIDO"}))
+        #    Con el truco ya querido no se puede cantar envido.
+        if data["truco_state"] == "NONE" and self._puede_cantar_envido(data, player_id):
+            actions.extend(self._acciones_envido(player_id))
 
         # 4. Acciones de cante de Truco
         if data["truco_last_offered_by"] != player_id:
@@ -138,6 +153,18 @@ class TrucoGame(AbstractGame):
 
         return actions
 
+    def _puede_cantar_envido(self, data: dict, player_id: str) -> bool:
+        """El envido se canta una sola vez, en primera, antes de tirar la propia carta."""
+        return (data["envido_state"] == "UNOPENED" and data["trick_num"] == 1
+                and len(data["played_cards"][player_id]) == 0)
+
+    def _acciones_envido(self, player_id: str) -> List[Action]:
+        return [
+            Action(ActionType.BID, player_id, "Envido", {"bid": "ENVIDO"}),
+            Action(ActionType.BID, player_id, "Real Envido", {"bid": "REAL_ENVIDO"}),
+            Action(ActionType.BID, player_id, "Falta Envido", {"bid": "FALTA_ENVIDO"}),
+        ]
+
     def step(self, state: GameState, action: Action) -> Tuple[GameState, float, bool]:
         """Aplica la acción y actualiza la máquina de estados del Truco."""
         player_id = action.player_id
@@ -147,10 +174,16 @@ class TrucoGame(AbstractGame):
 
         data["hand_just_finished"] = False
         data["envido_just_resolved"] = False
+        data["envido_por_mazo"] = 0
 
         # A) IRSE AL MAZO
         if action.action_type == ActionType.FOLD:
             points_won = data["truco_value"]
+            # Irse en primera sin que se haya jugado el envido (y sin truco
+            # querido, que ya lo cierra): el rival cobra tambien ese envido.
+            if data["trick_num"] == 1 and data["envido_state"] == "UNOPENED" and data["truco_state"] == "NONE":
+                data["envido_por_mazo"] = 1
+                points_won += 1
             state.players[opponent_id].score += points_won
             self._finish_hand(state, winner_id=opponent_id)
             return state, points_won, state.is_terminal
@@ -158,6 +191,9 @@ class TrucoGame(AbstractGame):
         # B) CANTAR ENVIDO
         if action.action_type == ActionType.BID and action.payload.get("bid") in ["ENVIDO", "REAL_ENVIDO", "FALTA_ENVIDO"]:
             bid_type = action.payload["bid"]
+            if data["envido_state"] != "WAITING_RESPONSE":
+                # Se abre la cadena: al resolverse, el turno vuelve aca.
+                data["envido_turn_owner"] = player_id
             data["envido_state"] = "WAITING_RESPONSE"
             data["envido_bid_chain"].append(bid_type)
             data["envido_bidder_id"] = player_id
@@ -179,16 +215,15 @@ class TrucoGame(AbstractGame):
                     "winner_id": data["envido_bidder_id"],
                     "points_won": points
                 }
-                state.current_player_id = data["envido_bidder_id"]
+                state.current_player_id = data["envido_turn_owner"]
                 self._check_game_over(state)
                 return state, 0.0, state.is_terminal
 
             elif resp == "QUIERO_ENVIDO":
                 p1_pts = calculate_envido_points(state.players[self.p1_id].hand + data["played_cards"][self.p1_id])
                 p2_pts = calculate_envido_points(state.players[self.p2_id].hand + data["played_cards"][self.p2_id])
-                points_won = self._calculate_accepted_envido_points(data["envido_bid_chain"], state)
-
                 winner_id = self.p1_id if p1_pts > p2_pts else (self.p2_id if p2_pts > p1_pts else data["mano_player_id"])
+                points_won = self._calculate_accepted_envido_points(data["envido_bid_chain"], state, winner_id)
                 state.players[winner_id].score += points_won
                 data["envido_state"] = "RESOLVED"
                 data["envido_points_awarded"] = True
@@ -200,13 +235,18 @@ class TrucoGame(AbstractGame):
                     "winner_id": winner_id,
                     "points_won": points_won
                 }
-                state.current_player_id = data["envido_bidder_id"]
+                state.current_player_id = data["envido_turn_owner"]
                 self._check_game_over(state)
                 return state, 0.0, state.is_terminal
 
         # D) CANTAR TRUCO / RETRUCO / VALE CUATRO
         if action.action_type == ActionType.BID and action.payload.get("bid") in ["TRUCO", "RETRUCO", "VALE_CUATRO"]:
             bid_type = action.payload["bid"]
+            if data["truco_state"] == "WAITING_RESPONSE":
+                # Subir es querer lo anterior: "Quiero retruco" ya vale el truco.
+                data["truco_value"] = TRUCO_VALOR[data["truco_bid_name"]]
+            else:
+                data["truco_turn_owner"] = player_id
             data["truco_state"] = "WAITING_RESPONSE"
             data["truco_bid_name"] = bid_type
             data["truco_last_offered_by"] = player_id
@@ -224,8 +264,8 @@ class TrucoGame(AbstractGame):
             elif resp == "QUIERO_TRUCO":
                 bid_name = data["truco_bid_name"]
                 data["truco_state"] = bid_name
-                data["truco_value"] = 2 if bid_name == "TRUCO" else (3 if bid_name == "RETRUCO" else 4)
-                state.current_player_id = opponent_id
+                data["truco_value"] = TRUCO_VALOR[bid_name]
+                state.current_player_id = data["truco_turn_owner"]
                 return state, 0.0, state.is_terminal
 
         # F) JUGAR CARTA
@@ -280,22 +320,28 @@ class TrucoGame(AbstractGame):
     def _calculate_refused_envido_points(self, chain: List[str]) -> int:
         if len(chain) == 1:
             return 1
-        points = 0
-        for bid in chain[:-1]:
-            points += 1 if bid == "ENVIDO" else (3 if bid == "REAL_ENVIDO" else 1)
-        return points
+        # No querido: se cobra lo que ya estaba querido (todo menos el ultimo cante).
+        return sum(ENVIDO_VALOR[bid] for bid in chain[:-1])
 
-    def _calculate_accepted_envido_points(self, chain: List[str], state: GameState) -> int:
-        pts = 0
-        for bid in chain:
-            if bid == "ENVIDO":
-                pts += 2
-            elif bid == "REAL_ENVIDO":
-                pts += 3
-            elif bid == "FALTA_ENVIDO":
-                max_score = max(state.players[self.p1_id].score, state.players[self.p2_id].score)
-                return self.target_score - max_score
-        return pts
+    def _calculate_accepted_envido_points(self, chain: List[str], state: GameState, winner_id: str) -> int:
+        if chain[-1] == "FALTA_ENVIDO":
+            return self._valor_falta_envido(state, winner_id)
+        return sum(ENVIDO_VALOR[bid] for bid in chain)
+
+    def _valor_falta_envido(self, state: GameState, winner_id: str) -> int:
+        """Lo que vale la falta envido querida.
+
+        - Si el que va ganando ya esta en las buenas: lo que le falta a el
+          para terminar la partida.
+        - Si todavia esta en las malas: la falta es el partido. Quien la gana
+          suma lo que le falta para llegar al final.
+
+        A 15 no hay malas ni buenas: vale lo que le falta al que va ganando.
+        """
+        lider = max(state.players[self.p1_id].score, state.players[self.p2_id].score)
+        if self.target_score == 30 and lider < 15:
+            return self.target_score - state.players[winner_id].score
+        return self.target_score - lider
 
     def _finish_hand(self, state: GameState, winner_id: str) -> None:
         state.game_data["hand_just_finished"] = True

@@ -42,6 +42,13 @@ goto :eof
 
 :python_encontrado
 
+REM La mesa usa pygame. Si falta, se instala una sola vez para este usuario.
+"%PYTHON%" %PYARGS% -c "import pygame" >nul 2>&1
+if errorlevel 1 (
+  echo    Instalando pygame, una sola vez...
+  "%PYTHON%" %PYARGS% -m pip install --user pygame
+)
+
 "%PYTHON%" %PYARGS% "%ARCHIVO%"
 echo.
 pause

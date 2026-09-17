@@ -7,6 +7,7 @@ from card_framework.core.action import Action, ActionType
 from card_framework.core.card import Card
 from card_framework.core.game_state import GameState
 from card_framework.games.truco.truco_deck import calculate_envido_points
+from card_framework.games.truco.truco_game import ENVIDO_VALOR
 
 
 class HeuristicTrucoAgent(AbstractAgent):
@@ -25,7 +26,8 @@ class HeuristicTrucoAgent(AbstractAgent):
         data = observation.game_data
 
         # 1. Evaluar si debemos responder a un cante de ENVIDO
-        response_envido = self._handle_envido_response(player.hand, valid_actions)
+        response_envido = self._handle_envido_response(
+            player.hand, valid_actions, self._no_querer_pierde_envido(observation, player_id))
         if response_envido:
             return response_envido
 
@@ -35,7 +37,8 @@ class HeuristicTrucoAgent(AbstractAgent):
             return bid_envido
 
         # 3. Evaluar si debemos responder a un cante de TRUCO
-        response_truco = self._handle_truco_response(player.hand, valid_actions)
+        response_truco = self._handle_truco_response(
+            player.hand, valid_actions, self._no_querer_pierde_truco(observation, player_id))
         if response_truco:
             return response_truco
 
@@ -52,7 +55,32 @@ class HeuristicTrucoAgent(AbstractAgent):
         # Fallback por seguridad
         return valid_actions[0]
 
-    def _handle_envido_response(self, hand: List[Card], valid_actions: List[Action]) -> Optional[Action]:
+    # ---------- lectura del tanteador ----------
+    @staticmethod
+    def _rival_gana_con(observation: GameState, player_id: str, puntos: int) -> bool:
+        """True si al rival le alcanzan `puntos` para terminar la partida."""
+        rival = next(pid for pid in observation.players if pid != player_id)
+        objetivo = observation.game_data.get("target_score", 15)
+        return observation.players[rival].score + puntos >= objetivo
+
+    def _no_querer_pierde_envido(self, observation: GameState, player_id: str) -> bool:
+        """Un "no quiero" al envido que le regala la partida al rival."""
+        data = observation.game_data
+        cadena = data.get("envido_bid_chain") or []
+        if data.get("envido_state") != "WAITING_RESPONSE" or not cadena:
+            return False
+        puntos = 1 if len(cadena) == 1 else sum(ENVIDO_VALOR[b] for b in cadena[:-1])
+        return self._rival_gana_con(observation, player_id, puntos)
+
+    def _no_querer_pierde_truco(self, observation: GameState, player_id: str) -> bool:
+        """Un "no quiero" al truco que le regala la partida al rival."""
+        data = observation.game_data
+        if data.get("truco_state") != "WAITING_RESPONSE":
+            return False
+        return self._rival_gana_con(observation, player_id, data.get("truco_value", 1))
+
+    def _handle_envido_response(self, hand: List[Card], valid_actions: List[Action],
+                                no_querer_pierde: bool = False) -> Optional[Action]:
         env_resp_actions = [a for a in valid_actions if a.payload.get("response") in ["QUIERO_ENVIDO", "NO_QUIERO_ENVIDO"]]
         if not env_resp_actions:
             return None
@@ -63,7 +91,8 @@ class HeuristicTrucoAgent(AbstractAgent):
         if points >= 31 and raises:
             return random.choice(raises)
 
-        if points >= 26 or (random.random() < self.bluff_frequency):
+        # Si no querer entrega la partida, querer nunca es peor: se quiere siempre.
+        if points >= 26 or no_querer_pierde or (random.random() < self.bluff_frequency):
             quiero = next((a for a in env_resp_actions if a.payload.get("response") == "QUIERO_ENVIDO"), None)
             if quiero:
                 return quiero
@@ -93,7 +122,8 @@ class HeuristicTrucoAgent(AbstractAgent):
 
         return None
 
-    def _handle_truco_response(self, hand: List[Card], valid_actions: List[Action]) -> Optional[Action]:
+    def _handle_truco_response(self, hand: List[Card], valid_actions: List[Action],
+                               no_querer_pierde: bool = False) -> Optional[Action]:
         truco_resp = [a for a in valid_actions if a.payload.get("response") in ["QUIERO_TRUCO", "NO_QUIERO_TRUCO"]]
         if not truco_resp:
             return None
@@ -102,7 +132,7 @@ class HeuristicTrucoAgent(AbstractAgent):
         avg_rank = sum(c.rank for c in hand) / max(len(hand), 1)
 
         # Si tenemos cartas altas (ej. Ancho, 7 de Espada/Oro, 3s)
-        if max_rank >= 10 or avg_rank >= 7.0 or (random.random() < self.bluff_frequency):
+        if max_rank >= 10 or avg_rank >= 7.0 or no_querer_pierde or (random.random() < self.bluff_frequency):
             # Posibilidad de re-truco si la mano es devastadora
             retruco = next((a for a in valid_actions if a.payload.get("bid") in ["RETRUCO", "VALE_CUATRO"]), None)
             if retruco and max_rank >= 12:

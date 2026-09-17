@@ -9,7 +9,7 @@ Real envido
 
 No piense en un descuido...
 si no es pa’ tanto la cosa,
-yo le digo Reak envido
+yo le digo Real envido
 que es lo mesmo que olorosa.
 
 Con su boquita de grana
@@ -47,11 +47,6 @@ Una carrera corrieron
 el sapo y la comadreja,
 y el sapo al aventajarla
 le dijo Truco en la oreja.
-
-Al Truco estamos jugando
-dijo el viejo a toda voz
-si me acepta este convite
-le parto el ojete en dos.
 
 Aqui me presento yo
 en mi tordillo pazuco
